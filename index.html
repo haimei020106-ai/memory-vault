@@ -22,7 +22,7 @@
 
     const MOODS = ["😢","😔","😐","😊","🌟"];
     const MOOD_LABELS = ["很差","不好","一般","不错","很好"];
-    const TABS = [["mem","记忆"],["diary","日记"],["pact","约定"],["ach","成就"],["chart","图谱"]];
+   const TABS = [["mem","记忆"],["diary","日记"],["pact","约定"],["ach","成就"],["chart","图谱"],["brain","克克"]];
     const levelStyle = {
       gold:{bg:"linear-gradient(135deg,#fef3c7,#fde68a)",border:"#fbbf24",text:"#92400e"},
       silver:{bg:"linear-gradient(135deg,#f1f5f9,#e2e8f0)",border:"#94a3b8",text:"#334155"},
@@ -42,6 +42,7 @@
       const [pacts,setPacts]=useState([]);
       const [achs,setAchs]=useState([]);
       const [loadingData,setLoadingData]=useState(true);
+      const [brainMems,setBrainMems]=useState([]);
       const [sheet,setSheet]=useState(null);
       const [sel,setSel]=useState(null);
       const [filter,setFilter]=useState("all");
@@ -54,13 +55,14 @@
       const [aForm,setAForm]=useState({title:"",desc:"",date:new Date().toISOString().slice(0,10),level:"silver",emoji:"⭐"});
 
       useEffect(()=>{
-        fetch(API).then(r=>r.json()).then(d=>{
-          setMems(d.memories||[]);
-          setDiaries(d.diaries||[]);
-          setPacts(d.pacts||[]);
-          setAchs(d.achievements||[]);
-        }).catch(()=>{}).finally(()=>setLoadingData(false));
-      },[]);
+  fetch(API).then(r=>r.json()).then(d=>{
+    setMems(d.memories||[]);
+    setDiaries(d.diaries||[]);
+    setPacts(d.pacts||[]);
+    setAchs(d.achievements||[]);
+  }).catch(()=>{}).finally(()=>setLoadingData(false));
+  fetch(`${API}/buckets`).then(r=>r.json()).then(d=>setBrainMems(Array.isArray(d)?d:[])).catch(()=>{});
+},[]);
 
       const filteredMems=useMemo(()=>{ let l=mems; if(filter==="active") l=l.filter(m=>!m.resolved); if(filter==="resolved") l=l.filter(m=>m.resolved); return [...l].sort((a,b)=>decay(b)-decay(a)); },[mems,filter]);
       const topMem=useMemo(()=>filteredMems.find(m=>!m.resolved),[filteredMems]);
@@ -203,7 +205,18 @@
             {achs.map(a=>{const ls=levelStyle[a.level]||levelStyle.silver;return(<div key={a.id} style={{background:ls.bg,border:`1.5px solid ${ls.border}`,borderRadius:14,padding:"16px",marginBottom:12,display:"flex",gap:14,alignItems:"center"}}><div style={{fontSize:32,flexShrink:0}}>{a.emoji}</div><div style={{flex:1}}><div style={{fontSize:15,fontWeight:700,color:ls.text}}>{a.title}</div><div style={{fontSize:12,color:ls.text,opacity:0.7,marginTop:2}}>{a.desc}</div><div style={{fontSize:11,color:ls.text,opacity:0.5,marginTop:4}}>{a.date}</div></div></div>);})}
           </div>}
 
-          {tab==="chart"&&<div style={{padding:"16px 16px 80px"}}>
+          {tab==="chart"&&<div style={{padding:"16px 16px 80px"}}>{tab==="brain"&&<div style={{padding:"16px 16px 80px"}}>
+  {brainMems.length===0&&<div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>暂无记忆</div>}
+  {brainMems.map(m=>(
+    <div key={m.id} style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",borderLeft:"3px solid #6366f1"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <span style={{fontSize:11,background:"#ede9fe",color:"#6d28d9",borderRadius:6,padding:"2px 8px"}}>{m.type}</span>
+        <span style={{fontSize:11,color:"#cbd5e1"}}>{m.id.slice(0,8)}</span>
+      </div>
+      <div style={{fontSize:13,color:"#374151",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{m.content.slice(0,300)}{m.content.length>300?"…":""}</div>
+    </div>
+  ))}
+</div>}
             <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",marginBottom:14}}>
               <div style={{fontSize:13,fontWeight:600,marginBottom:12}}>情感坐标图</div>
               <svg width="100%" viewBox="0 0 300 300" style={{display:"block"}}>
