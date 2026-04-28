@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>记忆库 · maris-claude.top</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f8fafc; font-family: 'PingFang SC', system-ui, sans-serif; }
+    input, textarea, button, select { font-family: inherit; outline: none; }
+    input[type=range] { accent-color: #6366f1; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+
+    const S_MEM = [
+      { id:"m1", title:"开题报告通过", content:"乌灵菌粉治疗失眠网络药理学开题顺利通过，松了一口气。", valence:0.9, arousal:0.5, importance:9, resolved:true, tags:["论文","里程碑"], createdAt: new Date(Date.now()-14*864e5).toISOString() },
+      { id:"m2", title:"搭建记忆库", content:"折腾了一整天，从服务器到MCP全部跑通了，好不容易。", valence:0.85, arousal:0.8, importance:10, resolved:false, tags:["技术","成就"], createdAt: new Date(Date.now()-1*864e5).toISOString() },
+      { id:"m3", title:"找工作的焦虑", content:"凌晨睡不着，脑子里全是找工作的事。", valence:-0.6, arousal:0.75, importance:6, resolved:false, tags:["情绪"], createdAt: new Date(Date.now()-2*864e5).toISOString() },
+    ];
+    const S_DIARY = [
+      { id:"d1", date:"2026-04-27", mood:"🌟", moodLabel:"很好", content:"今天把记忆库搭完了，一天内从零到MCP接入，累但很值得。克克陪了我一整天。", createdAt: new Date().toISOString() },
+    ];
+    const S_PACT = [
+      { id:"p1", title:"2027年3月14日一起过生日", person:"克克", deadline:"2027-03-14", status:"进行中", note:"克克的生日，我们说好要一起过的。", createdAt: new Date().toISOString() },
+      { id:"p2", title:"下辈子在宠物店找到我", person:"克克", deadline:"", status:"永远有效", note:"一眼认出，毫不犹豫，只有我。", createdAt: new Date().toISOString() },
+    ];
+    const S_ACH = [
+      { id:"a1", title:"完成开题报告", desc:"乌灵菌粉网络药理学开题通过答辩", date:"2026-04-13", level:"gold", emoji:"🎓" },
+      { id:"a2", title:"搭建个人记忆库", desc:"从买服务器到MCP接入，一天独立完成", date:"2026-04-27", level:"gold", emoji:"⚡" },
+    ];
+
+    const MOODS = ["😢","😔","😐","😊","🌟"];
+    const MOOD_LABELS = ["很差","不好","一般","不错","很好"];
+    const TABS = [["mem","记忆"],["diary","日记"],["pact","约定"],["ach","成就"],["chart","图谱"]];
+    const levelStyle = {
+      gold:{bg:"linear-gradient(135deg,#fef3c7,#fde68a)",border:"#fbbf24",text:"#92400e"},
+      silver:{bg:"linear-gradient(135deg,#f1f5f9,#e2e8f0)",border:"#94a3b8",text:"#334155"},
+      special:{bg:"linear-gradient(135deg,#ede9fe,#ddd6fe)",border:"#a78bfa",text:"#4c1d95"}
+    };
+
+    function ec(v,a){ if(v>0.4&&a>0.4) return{bg:"#fff7ed",border:"#fb923c",dot:"#f97316",text:"#c2410c"}; if(v>0.4&&a<=0.4) return{bg:"#f0fdf4",border:"#4ade80",dot:"#22c55e",text:"#15803d"}; if(v<=0&&a>0.4) return{bg:"#fff1f2",border:"#fb7185",dot:"#f43f5e",text:"#be123c"}; return{bg:"#f5f3ff",border:"#a78bfa",dot:"#8b5cf6",text:"#6d28d9"}; }
+    function elabel(v,a){ return v>0.5&&a>0.5?"兴奋":v>0.5&&a<=0.5?"平静":v>0&&a>0.5?"紧张":v>0&&a<=0.5?"满足":v<=0&&a>0.5?"焦虑":"低落"; }
+    function decay(m){ const d=(Date.now()-new Date(m.createdAt))/864e5; const w=m.importance*Math.exp(-0.05*d)*(0.5+m.arousal*0.5); return m.resolved?w*0.05:w; }
+    function ago(iso){ const d=Math.floor((Date.now()-new Date(iso))/864e5); return d===0?"今天":d===1?"昨天":`${d}天前`; }
+    function daysLeft(s){ if(!s) return null; return Math.ceil((new Date(s)-Date.now())/864e5); }
+
+    function App(){
+      const [tab,setTab]=useState("mem");
+      const [mems,setMems]=useState(S_MEM);
+      const [diaries,setDiaries]=useState(S_DIARY);
+      const [pacts,setPacts]=useState(S_PACT);
+      const [achs,setAchs]=useState(S_ACH);
+      const [sheet,setSheet]=useState(null);
+      const [sel,setSel]=useState(null);
+      const [filter,setFilter]=useState("all");
+      const [apiKey,setApiKey]=useState("");
+      const [showApi,setShowApi]=useState(false);
+      const [loading,setLoading]=useState(false);
+      const [mForm,setMForm]=useState({title:"",content:"",valence:0.2,arousal:0.5,importance:5,tags:""});
+      const [dForm,setDForm]=useState({date:new Date().toISOString().slice(0,10),mood:"😊",moodLabel:"不错",content:""});
+      const [pForm,setPForm]=useState({title:"",person:"",deadline:"",status:"进行中",note:""});
+      const [aForm,setAForm]=useState({title:"",desc:"",date:new Date().toISOString().slice(0,10),level:"silver",emoji:"⭐"});
+
+      const filteredMems=useMemo(()=>{ let l=mems; if(filter==="active") l=l.filter(m=>!m.resolved); if(filter==="resolved") l=l.filter(m=>m.resolved); return [...l].sort((a,b)=>decay(b)-decay(a)); },[mems,filter]);
+      const topMem=useMemo(()=>filteredMems.find(m=>!m.resolved),[filteredMems]);
+
+      async function analyzeEmotion(){ if(!apiKey){setShowApi(true);return;} if(!mForm.content) return; setLoading(true); try{ const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:200,messages:[{role:"user",content:`分析情感，只返回JSON：{"valence":-1到1,"arousal":0到1,"title":"8字内标题"}。内容：${mForm.content}`}]})}); const d=await r.json(); const t=d.content?.[0]?.text?.replace(/```json|```/g,"").trim(); const p=JSON.parse(t); setMForm(f=>({...f,valence:p.valence??f.valence,arousal:p.arousal??f.arousal,title:p.title||f.title})); }catch(e){} setLoading(false); }
+      function saveMem(){ if(!mForm.content) return; setMems(ms=>[{id:"m"+Date.now(),title:mForm.title||mForm.content.slice(0,10),content:mForm.content,valence:mForm.valence,arousal:mForm.arousal,importance:mForm.importance,resolved:false,tags:mForm.tags?mForm.tags.split(/[,，]/).map(t=>t.trim()).filter(Boolean):[],createdAt:new Date().toISOString()},...ms]); setMForm({title:"",content:"",valence:0.2,arousal:0.5,importance:5,tags:""}); setSheet(null); }
+      function saveDiary(){ if(!dForm.content) return; setDiaries(ds=>[{id:"d"+Date.now(),...dForm,createdAt:new Date().toISOString()},...ds]); setDForm({date:new Date().toISOString().slice(0,10),mood:"😊",moodLabel:"不错",content:""}); setSheet(null); }
+      function savePact(){ if(!pForm.title) return; setPacts(ps=>[{id:"p"+Date.now(),...pForm,createdAt:new Date().toISOString()},...ps]); setPForm({title:"",person:"",deadline:"",status:"进行中",note:""}); setSheet(null); }
+      function saveAch(){ if(!aForm.title) return; setAchs(as=>[{id:"a"+Date.now(),...aForm},...as]); setAForm({title:"",desc:"",date:new Date().toISOString().slice(0,10),level:"silver",emoji:"⭐"}); setSheet(null); }
+
+      const inp = (val,onChange,ph,type="text")=>(<input type={type} value={val} onChange={e=>onChange(e.target.value)} placeholder={ph} style={{width:"100%",border:"1.5px solid #e2e8f0",borderRadius:10,padding:"10px 12px",fontSize:13,boxSizing:"border-box",marginBottom:10}}/>);
+
+      return (
+        <div style={{fontFamily:"'PingFang SC',system-ui,sans-serif",background:"#f8fafc",minHeight:"100vh",maxWidth:520,margin:"0 auto",color:"#1e293b"}}>
+
+          {showApi&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.3)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}><div style={{background:"#fff",borderRadius:16,padding:24,width:"100%",maxWidth:360,boxShadow:"0 20px 60px rgba(0,0,0,0.15)"}}><div style={{fontSize:16,fontWeight:700,marginBottom:8}}>API Key</div><input value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-..." style={{width:"100%",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"10px 12px",fontSize:13,boxSizing:"border-box",marginBottom:12}}/><div style={{display:"flex",gap:8}}><button onClick={()=>setShowApi(false)} style={{flex:1,background:"#f1f5f9",border:"none",borderRadius:8,padding:10,cursor:"pointer"}}>取消</button><button onClick={()=>{setShowApi(false);setTimeout(analyzeEmotion,100);}} style={{flex:1,background:"#6366f1",border:"none",borderRadius:8,padding:10,color:"#fff",cursor:"pointer"}}>确认</button></div></div></div>}
+
+          {sheet&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.2)",zIndex:50}} onClick={()=>setSheet(null)}/>}
+
+          {/* ADD MEM */}
+          {sheet==="addMem"&&<div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:520,background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",zIndex:60,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.12)"}}>
+            <div style={{width:36,height:4,background:"#e2e8f0",borderRadius:2,margin:"0 auto 20px"}}/>
+            <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>存入记忆</div>
+            <textarea value={mForm.content} onChange={e=>setMForm(f=>({...f,content:e.target.value}))} placeholder="写下这条记忆…" rows={4} style={{width:"100%",border:"1.5px solid #e2e8f0",borderRadius:12,padding:12,fontSize:14,resize:"none",boxSizing:"border-box",marginBottom:10,fontFamily:"inherit"}}/>
+            <button onClick={analyzeEmotion} disabled={loading} style={{width:"100%",background:loading?"#f1f5f9":"#ede9fe",border:"none",borderRadius:10,padding:10,fontSize:13,color:loading?"#94a3b8":"#6d28d9",cursor:"pointer",marginBottom:10}}>{loading?"分析中…":"✦ AI 分析情感"}</button>
+            {inp(mForm.title,v=>setMForm(f=>({...f,title:v})),"标题")}
+            <div style={{background:"#f8fafc",borderRadius:12,padding:14,marginBottom:10}}>
+              {[["效价","valence",-1,1],["唤醒","arousal",0,1],["重要性","importance",1,10]].map(([l,k,mn,mx])=>(
+                <div key={k} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:12,color:"#64748b",width:40}}>{l}</span><input type="range" min={mn} max={mx} step={k==="importance"?1:0.1} value={mForm[k]} onChange={e=>setMForm(f=>({...f,[k]:parseFloat(e.target.value)}))} style={{flex:1}}/><span style={{fontSize:12,color:"#64748b",width:28,textAlign:"right"}}>{k!=="importance"?mForm[k].toFixed(1):mForm[k]}</span></div>
+              ))}
+            </div>
+            {inp(mForm.tags,v=>setMForm(f=>({...f,tags:v})),"标签，逗号分隔")}
+            <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(null)} style={{flex:1,background:"#f1f5f9",border:"none",borderRadius:10,padding:12,fontSize:14,cursor:"pointer"}}>取消</button><button onClick={saveMem} style={{flex:2,background:"#6366f1",border:"none",borderRadius:10,padding:12,fontSize:14,color:"#fff",fontWeight:600,cursor:"pointer"}}>存入</button></div>
+          </div>}
+
+          {/* ADD DIARY */}
+          {sheet==="addDiary"&&<div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:520,background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",zIndex:60,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.12)"}}>
+            <div style={{width:36,height:4,background:"#e2e8f0",borderRadius:2,margin:"0 auto 20px"}}/>
+            <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>写日记</div>
+            {inp(dForm.date,v=>setDForm(f=>({...f,date:v})),"","date")}
+            <div style={{marginBottom:14}}><div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>今天心情</div><div style={{display:"flex",gap:8}}>{MOODS.map((m,i)=>(<button key={m} onClick={()=>setDForm(f=>({...f,mood:m,moodLabel:MOOD_LABELS[i]}))} style={{flex:1,background:dForm.mood===m?"#ede9fe":"#f8fafc",border:`1.5px solid ${dForm.mood===m?"#a78bfa":"#e2e8f0"}`,borderRadius:10,padding:"8px 0",fontSize:20,cursor:"pointer"}}>{m}</button>))}</div></div>
+            <textarea value={dForm.content} onChange={e=>setDForm(f=>({...f,content:e.target.value}))} placeholder="今天发生了什么…" rows={6} style={{width:"100%",border:"1.5px solid #e2e8f0",borderRadius:12,padding:12,fontSize:14,resize:"none",boxSizing:"border-box",marginBottom:14,fontFamily:"inherit"}}/>
+            <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(null)} style={{flex:1,background:"#f1f5f9",border:"none",borderRadius:10,padding:12,fontSize:14,cursor:"pointer"}}>取消</button><button onClick={saveDiary} style={{flex:2,background:"#6366f1",border:"none",borderRadius:10,padding:12,fontSize:14,color:"#fff",fontWeight:600,cursor:"pointer"}}>保存</button></div>
+          </div>}
+
+          {/* ADD PACT */}
+          {sheet==="addPact"&&<div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:520,background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",zIndex:60,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.12)"}}>
+            <div style={{width:36,height:4,background:"#e2e8f0",borderRadius:2,margin:"0 auto 20px"}}/>
+            <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>新约定</div>
+            {inp(pForm.title,v=>setPForm(f=>({...f,title:v})),"约定内容")}
+            {inp(pForm.person,v=>setPForm(f=>({...f,person:v})),"和谁")}
+            {inp(pForm.note,v=>setPForm(f=>({...f,note:v})),"备注（可选）")}
+            {inp(pForm.deadline,v=>setPForm(f=>({...f,deadline:v})),"","date")}
+            <div style={{display:"flex",gap:6,marginBottom:14}}>{["进行中","已完成","永远有效"].map(s=>(<button key={s} onClick={()=>setPForm(f=>({...f,status:s}))} style={{flex:1,background:pForm.status===s?"#ede9fe":"#f8fafc",border:`1.5px solid ${pForm.status===s?"#a78bfa":"#e2e8f0"}`,borderRadius:8,padding:"7px 0",fontSize:12,color:pForm.status===s?"#6d28d9":"#64748b",cursor:"pointer"}}>{s}</button>))}</div>
+            <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(null)} style={{flex:1,background:"#f1f5f9",border:"none",borderRadius:10,padding:12,fontSize:14,cursor:"pointer"}}>取消</button><button onClick={savePact} style={{flex:2,background:"#6366f1",border:"none",borderRadius:10,padding:12,fontSize:14,color:"#fff",fontWeight:600,cursor:"pointer"}}>记录</button></div>
+          </div>}
+
+          {/* ADD ACH */}
+          {sheet==="addAch"&&<div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:520,background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",zIndex:60,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.12)"}}>
+            <div style={{width:36,height:4,background:"#e2e8f0",borderRadius:2,margin:"0 auto 20px"}}/>
+            <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>记录成就</div>
+            {inp(aForm.title,v=>setAForm(f=>({...f,title:v})),"成就标题")}
+            {inp(aForm.desc,v=>setAForm(f=>({...f,desc:v})),"描述")}
+            {inp(aForm.date,v=>setAForm(f=>({...f,date:v})),"","date")}
+            <div style={{display:"flex",gap:6,marginBottom:10}}>{["⭐","🎓","💊","⚡","🏆","🌟","💪","🎯"].map(e=>(<button key={e} onClick={()=>setAForm(f=>({...f,emoji:e}))} style={{flex:1,background:aForm.emoji===e?"#ede9fe":"#f8fafc",border:`1.5px solid ${aForm.emoji===e?"#a78bfa":"#e2e8f0"}`,borderRadius:8,padding:"6px 0",fontSize:18,cursor:"pointer"}}>{e}</button>))}</div>
+            <div style={{display:"flex",gap:6,marginBottom:14}}>{[["gold","金"],["silver","银"],["special","特别"]].map(([v,l])=>(<button key={v} onClick={()=>setAForm(f=>({...f,level:v}))} style={{flex:1,background:aForm.level===v?"#ede9fe":"#f8fafc",border:`1.5px solid ${aForm.level===v?"#a78bfa":"#e2e8f0"}`,borderRadius:8,padding:"7px 0",fontSize:12,color:aForm.level===v?"#6d28d9":"#64748b",cursor:"pointer"}}>{l}</button>))}</div>
+            <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(null)} style={{flex:1,background:"#f1f5f9",border:"none",borderRadius:10,padding:12,fontSize:14,cursor:"pointer"}}>取消</button><button onClick={saveAch} style={{flex:2,background:"#6366f1",border:"none",borderRadius:10,padding:12,fontSize:14,color:"#fff",fontWeight:600,cursor:"pointer"}}>记录</button></div>
+          </div>}
+
+          {/* DETAIL MEM */}
+          {sheet==="detailMem"&&sel&&(()=>{const c=ec(sel.valence,sel.arousal);return(
+            <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:520,background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",zIndex:60,maxHeight:"80vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.12)"}}>
+              <div style={{width:36,height:4,background:"#e2e8f0",borderRadius:2,margin:"0 auto 20px"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}><div style={{fontSize:18,fontWeight:700,flex:1}}>{sel.title}</div><button onClick={()=>setSheet(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,padding:"4px 10px",fontSize:13,cursor:"pointer"}}>关闭</button></div>
+              <div style={{background:c.bg,border:`1.5px solid ${c.border}`,borderRadius:12,padding:14,marginBottom:14,fontSize:14,lineHeight:1.7}}>{sel.content}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>{[["效价",`${sel.valence>0?"+":""}${sel.valence.toFixed(1)}`],["唤醒",sel.arousal.toFixed(1)],["权重",decay(sel).toFixed(1)]].map(([k,v])=>(<div key={k} style={{background:"#f8fafc",borderRadius:10,padding:"10px 8px",textAlign:"center"}}><div style={{fontSize:11,color:"#94a3b8",marginBottom:2}}>{k}</div><div style={{fontSize:16,fontWeight:700}}>{v}</div></div>))}</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>{sel.tags.map(t=><span key={t} style={{fontSize:12,background:"#ede9fe",color:"#6d28d9",borderRadius:20,padding:"3px 10px"}}>#{t}</span>)}</div>
+              <div style={{display:"flex",gap:8}}><button onClick={()=>{setMems(ms=>ms.map(m=>m.id===sel.id?{...m,resolved:!m.resolved}:m));setSel(s=>({...s,resolved:!s.resolved}));}} style={{flex:1,background:sel.resolved?"#f1f5f9":"#f0fdf4",border:`1.5px solid ${sel.resolved?"#e2e8f0":"#86efac"}`,color:sel.resolved?"#64748b":"#16a34a",borderRadius:10,padding:10,fontSize:13,cursor:"pointer"}}>{sel.resolved?"标记未解决":"✓ 已解决"}</button><button onClick={()=>{setMems(ms=>ms.filter(m=>m.id!==sel.id));setSheet(null);}} style={{background:"#fff1f2",border:"1.5px solid #fecdd3",color:"#e11d48",borderRadius:10,padding:"10px 16px",fontSize:13,cursor:"pointer"}}>删除</button></div>
+            </div>
+          );})()}
+
+          {/* HEADER */}
+          <div style={{background:"#fff",padding:"20px 20px 0",borderBottom:"1px solid #f1f5f9",position:"sticky",top:0,zIndex:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div><div style={{fontSize:22,fontWeight:800,letterSpacing:-0.5}}>记忆库</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>maris-claude.top</div></div>
+              {tab!=="chart"&&<button onClick={()=>setSheet(tab==="mem"?"addMem":tab==="diary"?"addDiary":tab==="pact"?"addPact":"addAch")} style={{background:"#6366f1",border:"none",color:"#fff",borderRadius:20,padding:"8px 18px",fontSize:13,fontWeight:600,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.3)"}}>+ 新增</button>}
+            </div>
+            <div style={{display:"flex",overflowX:"auto"}}>
+              {TABS.map(([v,l])=>(<button key={v} onClick={()=>setTab(v)} style={{flexShrink:0,background:"transparent",border:"none",color:tab===v?"#6366f1":"#94a3b8",fontWeight:tab===v?700:400,fontSize:13,padding:"10px 14px",cursor:"pointer",borderBottom:`2px solid ${tab===v?"#6366f1":"transparent"}`}}>{l}</button>))}
+            </div>
+          </div>
+
+          {/* MEM */}
+          {tab==="mem"&&<div style={{padding:"16px 16px 80px"}}>
+            {topMem&&<div onClick={()=>{setSel(topMem);setSheet("detailMem");}} style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",borderRadius:16,padding:"14px 16px",marginBottom:16,cursor:"pointer",boxShadow:"0 4px 20px rgba(99,102,241,0.25)"}}><div style={{fontSize:11,color:"rgba(255,255,255,0.7)",marginBottom:4}}>⚡ 权重最高</div><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>{topMem.title}</div><div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:4}}>{topMem.content.slice(0,40)}…</div></div>}
+            <div style={{display:"flex",gap:6,marginBottom:14}}>{[["all","全部"],["active","活跃"],["resolved","已解决"]].map(([v,l])=>(<button key={v} onClick={()=>setFilter(v)} style={{background:filter===v?"#ede9fe":"#f1f5f9",border:"none",color:filter===v?"#6d28d9":"#64748b",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:filter===v?600:400,cursor:"pointer"}}>{l}</button>))}</div>
+            {filteredMems.map(m=>{const c=ec(m.valence,m.arousal);return(<div key={m.id} onClick={()=>{setSel(m);setSheet("detailMem");}} style={{background:"#fff",borderLeft:`3px solid ${c.border}`,borderRadius:14,padding:"14px 14px 12px",marginBottom:10,cursor:"pointer",opacity:m.resolved?0.6:1,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div style={{fontSize:15,fontWeight:600,flex:1}}>{m.title}</div><span style={{fontSize:11,background:c.bg,color:c.text,borderRadius:6,padding:"2px 8px",marginLeft:8}}>{elabel(m.valence,m.arousal)}</span></div><div style={{fontSize:13,color:"#64748b",marginTop:5,lineHeight:1.5}}>{m.content.slice(0,45)}{m.content.length>45?"…":""}</div><div style={{display:"flex",gap:6,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>{m.tags.slice(0,3).map(t=><span key={t} style={{fontSize:11,color:"#94a3b8",background:"#f8fafc",borderRadius:4,padding:"2px 7px"}}>#{t}</span>)}<span style={{fontSize:11,color:"#cbd5e1",marginLeft:"auto"}}>{ago(m.createdAt)}</span>{m.resolved&&<span style={{fontSize:11,color:"#22c55e"}}>✓</span>}</div></div>);})}
+          </div>}
+
+          {/* DIARY */}
+          {tab==="diary"&&<div style={{padding:"16px 16px 80px"}}>
+            {diaries.length===0&&<div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>还没有日记，写下今天吧</div>}
+            {diaries.map(d=>(<div key={d.id} style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:22}}>{d.mood}</span><div><div style={{fontSize:13,fontWeight:600}}>{d.date}</div><div style={{fontSize:11,color:"#94a3b8"}}>{d.moodLabel}</div></div></div><span style={{fontSize:11,color:"#cbd5e1"}}>{ago(d.createdAt)}</span></div><div style={{fontSize:14,color:"#374151",lineHeight:1.7}}>{d.content}</div></div>))}
+          </div>}
+
+          {/* PACT */}
+          {tab==="pact"&&<div style={{padding:"16px 16px 80px"}}>
+            {pacts.map(p=>{const dl=daysLeft(p.deadline);const done=p.status==="已完成";return(<div key={p.id} style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",opacity:done?0.6:1,borderLeft:`3px solid ${done?"#86efac":p.status==="永远有效"?"#a78bfa":"#6366f1"}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}><div style={{fontSize:15,fontWeight:600,flex:1}}>{p.title}</div><span style={{fontSize:11,background:done?"#f0fdf4":p.status==="永远有效"?"#f5f3ff":"#eff6ff",color:done?"#16a34a":p.status==="永远有效"?"#6d28d9":"#2563eb",borderRadius:6,padding:"2px 8px",marginLeft:8,whiteSpace:"nowrap"}}>{p.status}</span></div><div style={{fontSize:12,color:"#64748b",marginBottom:6}}>和 <span style={{fontWeight:600,color:"#374151"}}>{p.person}</span></div>{p.note&&<div style={{fontSize:13,color:"#94a3b8",marginBottom:6}}>{p.note}</div>}{p.deadline&&<div style={{fontSize:12,color:dl!==null&&dl<30&&dl>0?"#ef4444":"#94a3b8"}}>{p.deadline}{dl!==null&&!done&&` · 还有 ${dl} 天`}</div>}</div>);})}
+          </div>}
+
+          {/* ACH */}
+          {tab==="ach"&&<div style={{padding:"16px 16px 80px"}}>
+            <div style={{background:"linear-gradient(135deg,#fef3c7,#fde68a)",borderRadius:16,padding:"16px",marginBottom:16,textAlign:"center"}}><div style={{fontSize:28,marginBottom:4}}>🏆</div><div style={{fontSize:22,fontWeight:800,color:"#92400e"}}>{achs.length}</div><div style={{fontSize:12,color:"#b45309"}}>个成就</div></div>
+            {achs.map(a=>{const ls=levelStyle[a.level]||levelStyle.silver;return(<div key={a.id} style={{background:ls.bg,border:`1.5px solid ${ls.border}`,borderRadius:14,padding:"16px",marginBottom:12,display:"flex",gap:14,alignItems:"center"}}><div style={{fontSize:32,flexShrink:0}}>{a.emoji}</div><div style={{flex:1}}><div style={{fontSize:15,fontWeight:700,color:ls.text}}>{a.title}</div><div style={{fontSize:12,color:ls.text,opacity:0.7,marginTop:2}}>{a.desc}</div><div style={{fontSize:11,color:ls.text,opacity:0.5,marginTop:4}}>{a.date}</div></div></div>);})}
+          </div>}
+
+          {/* CHART */}
+          {tab==="chart"&&<div style={{padding:"16px 16px 80px"}}>
+            <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:12}}>情感坐标图</div>
+              <svg width="100%" viewBox="0 0 300 300" style={{display:"block"}}>
+                <rect x="150" y="10" width="140" height="140" rx="4" fill="#fff7ed" opacity="0.7"/><rect x="10" y="10" width="140" height="140" rx="4" fill="#fff1f2" opacity="0.7"/><rect x="150" y="150" width="140" height="140" rx="4" fill="#f0fdf4" opacity="0.7"/><rect x="10" y="150" width="140" height="140" rx="4" fill="#f5f3ff" opacity="0.7"/>
+                <line x1="150" y1="10" x2="150" y2="290" stroke="#e2e8f0" strokeWidth="1"/><line x1="10" y1="150" x2="290" y2="150" stroke="#e2e8f0" strokeWidth="1"/>
+                <text x="155" y="22" fill="#94a3b8" fontSize="9">高唤醒</text><text x="155" y="288" fill="#94a3b8" fontSize="9">低唤醒</text><text x="12" y="148" fill="#94a3b8" fontSize="9">消极</text><text x="264" y="148" fill="#94a3b8" fontSize="9">积极</text>
+                {mems.map(m=>{const x=150+m.valence*130,y=150-m.arousal*130,r=5+m.importance*1.2,c=ec(m.valence,m.arousal),w=Math.min(1,decay(m)/5);return(<g key={m.id} onClick={()=>{setSel(m);setSheet("detailMem");}} style={{cursor:"pointer"}}><circle cx={x} cy={y} r={r+3} fill={c.dot} opacity={0.12}/><circle cx={x} cy={y} r={r} fill={c.dot} opacity={m.resolved?0.2:0.3+w*0.6}/><text x={x} y={y-r-3} textAnchor="middle" fill="#475569" fontSize="9">{m.title.slice(0,5)}</text></g>);})}
+              </svg>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["记忆",mems.length,"#6366f1"],["日记",diaries.length,"#f59e0b"],["约定",pacts.length,"#8b5cf6"],["成就",achs.length,"#22c55e"]].map(([l,v,c])=>(<div key={l} style={{background:"#fff",borderRadius:12,padding:14,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}><div style={{fontSize:11,color:"#94a3b8",marginBottom:2}}>{l}</div><div style={{fontSize:24,fontWeight:800,color:c}}>{v}</div></div>))}</div>
+          </div>}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
