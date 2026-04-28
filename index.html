@@ -60,8 +60,8 @@
     setDiaries(d.diaries||[]);
     setPacts(d.pacts||[]);
     setAchs(d.achievements||[]);
-  }).catch(()=>{}).finally(()=>setLoadingData(false));
-  fetch(`${API}/buckets`).then(r=>r.json()).then(d=>setBrainMems(Array.isArray(d)?d:[])).catch(()=>{});
+    return fetch(`${API}/buckets`);
+  }).then(r=>r.json()).then(d=>setBrainMems(Array.isArray(d)?d:[])).catch(()=>{}).finally(()=>setLoadingData(false));
 },[]);
 
       const filteredMems=useMemo(()=>{ let l=mems; if(filter==="active") l=l.filter(m=>!m.resolved); if(filter==="resolved") l=l.filter(m=>m.resolved); return [...l].sort((a,b)=>decay(b)-decay(a)); },[mems,filter]);
