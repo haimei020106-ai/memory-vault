@@ -194,7 +194,7 @@
                 <span style={{fontSize:11,background:"#ede9fe",color:"#6d28d9",borderRadius:6,padding:"2px 8px"}}>{m.type}</span>
                 <span style={{fontSize:11,color:"#cbd5e1"}}>{m.id.slice(0,8)}</span>
               </div>
-              <div style={{fontSize:13,color:"#374151",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{m.content.slice(0,300)}{m.content.length>300?"…":""}</div>
+              <div style={{fontSize:13,color:"#374151",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{m.content.replace(/^---[\s\S]*?---\n/,"").trim()}</div>
             </div>))}
           </div>}
 
