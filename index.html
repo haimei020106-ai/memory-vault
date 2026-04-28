@@ -18,7 +18,7 @@
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useMemo } = React;
-
+const API = "https://api.maris-claude.top";
     const S_MEM = [
       { id:"m1", title:"开题报告通过", content:"乌灵菌粉治疗失眠网络药理学开题顺利通过，松了一口气。", valence:0.9, arousal:0.5, importance:9, resolved:true, tags:["论文","里程碑"], createdAt: new Date(Date.now()-14*864e5).toISOString() },
       { id:"m2", title:"搭建记忆库", content:"折腾了一整天，从服务器到MCP全部跑通了，好不容易。", valence:0.85, arousal:0.8, importance:10, resolved:false, tags:["技术","成就"], createdAt: new Date(Date.now()-1*864e5).toISOString() },
